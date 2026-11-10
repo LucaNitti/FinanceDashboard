@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+%%FINFLOW_BASE_INJECT%%
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FinFlow">
+<meta name="theme-color" id="themeColor" content="#0E141C">
+<!-- Installabile come app (manifest + sw.js registrato da main.js); icone generate da tools/make-icons.js -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>
+// Tema prima del primo disegno (niente lampo scuro→chiaro): scelta salvata (chiaro/scuro), altrimenti automatico = tema del sistema.
+(function () {
+  var p = null;
+  try { p = localStorage.getItem('finflow-theme'); } catch (e) {}
+  if (p !== 'light' && p !== 'dark') p = 'auto';
+  var t = p === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : p;
+  document.documentElement.setAttribute('data-theme', t);
+  document.documentElement.setAttribute('data-theme-pref', p);
+})();
+</script>
+<title>FinFlow</title>
+<!-- Chart.js e font in locale (public/vendor): l'app non contatta server esterni.
+     Percorsi relativi: con BASE_PATH il server inietta <base href="BASE_PATH/"> in cima. -->
+<link rel="preload" href="vendor/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="vendor/newsreader-latin.woff2" as="font" type="font/woff2" crossorigin>
+<script defer src="vendor/chart.umd.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- SCHERMATA DI CARICAMENTO -->
+<div id="setup">
+  <div class="setup-box">
+    <div class="logo"><span class="brand-name logo-text">FinFlow</span></div>
+    <div class="spinner"></div>
+    <div id="setupMsg" class="setup-msg">Connessione al server in corso...</div>
+    <div id="setupErr" class="setup-err" role="alert" style="display:none"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+
+  <!-- BARRA IN ALTO (su telefono si usano #mobileSubbar e #bottomNav) -->
+  <nav id="topNav" aria-label="Navigazione principale">
+    <div class="brand"><span class="brand-name">FinFlow</span><span class="app-version"></span></div>
+    <div class="nav-tabs">
+      <button class="tab active" data-section="overview">Panoramica</button>
+      <button class="tab" data-section="categories">Categorie</button>
+      <button class="tab" data-section="cashflow">Flusso</button>
+      <button class="tab" data-section="bollette">Bollette</button>
+      <button class="tab" data-section="compare">Anni</button>
+      <button class="tab" data-section="periodo">Periodo</button>
+      <button class="tab" data-section="dati">Dati</button>
+    </div>
+    <div class="nav-right">
+      <label class="nav-label" for="yearSelect">Anno</label>
+      <select class="year-select" id="yearSelect" onchange="switchYear(this.value)"></select>
+      <span id="cacheIndicator" class="cache-ind" role="status"></span>
+      <button type="button" class="btn-sm import-btn" onclick="apriImport()" hidden>Importa movimenti</button>
+      <button type="button" class="btn-sm btn-icon theme-btn" onclick="toggleTheme()" aria-label="Cambia tema"><svg class="i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      <button type="button" class="btn-sm btn-primary reload-btn" id="reloadBtn" onclick="reloadData()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg><span>Aggiorna dati</span></button>
+    </div>
+  </nav>
+
+  <!-- BARRA MOBILE: nome, anno e pulsanti con la sola icona -->
+  <div id="mobileSubbar">
+    <div class="brand"><span class="brand-name">FinFlow</span><span class="app-version"></span></div>
+    <div class="spacer"></div>
+    <label class="sr-only" for="yearSelectMobile">Anno</label>
+    <select class="year-select" id="yearSelectMobile" onchange="switchYear(this.value)"></select>
+    <button type="button" class="btn-sm btn-icon import-btn" onclick="apriImport()" aria-label="Importa movimenti" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
+    <button type="button" class="btn-sm btn-icon theme-btn" onclick="toggleTheme()" aria-label="Cambia tema"><svg class="i-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+    <button type="button" class="btn-sm btn-icon btn-primary reload-btn" aria-label="Aggiorna dati" onclick="reloadData()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
+  </div>
+
+  <main>
+
+    <!-- PANORAMICA -->
+    <div id="sec-overview" class="tabs-section visible">
+      <!-- Prima fila: il mese scelto e il saldo previsto -->
+      <div class="ov-fila">
+        <section class="chart-card ov-mese" id="metricsRow" aria-live="polite" aria-label="Mese selezionato"></section>
+        <section class="chart-card ov-saldo" id="saldoCard" aria-label="Saldo previsto"></section>
+      </div>
+
+      <!-- Seconda fila: il mese da pagare e le cose da controllare -->
+      <div class="ov-fila ov-fila-larga">
+        <section class="ov-prev" id="previsteWidget" aria-label="Spese previste del mese"></section>
+        <aside class="ov-check" aria-labelledby="controllareTitolo">
+          <h2 class="section-title" id="controllareTitolo">Da controllare</h2>
+          <p class="page-sub">Cose che FinFlow ha notato nei movimenti.</p>
+          <div class="check-blocco check-out" id="anomalieWidget"></div>
+          <div class="check-blocco check-prev" id="annualiWidget"></div>
+          <div class="check-blocco check-acc" id="abbonamentiWidget"></div>
+          <div class="check-blocco check-neutro" id="saldoControllo"></div>
+        </aside>
+      </div>
+
+      <!-- L'anno mese per mese: grafico e tabella unica -->
+      <section class="sezione" aria-labelledby="mesiTitolo">
+        <h2 class="section-title" id="mesiTitolo">L'anno mese per mese</h2>
+        <p class="page-sub sezione-sub">Le uscite comprendono le spese con la carta, che vengono addebitate il mese dopo. Clicca un mese per vedere i movimenti.</p>
+        <div class="legenda">
+          <span><i class="leg-linea s-in"></i>Entrate</span>
+          <span><i class="leg-linea s-out"></i>Uscite</span>
+          <span id="monthlyLegendCard" style="display:none"><i class="leg-box s-card"></i>di cui con carta</span>
+          <span><i class="leg-box s-net"></i>Differenza del mese</span>
+          <span><i class="leg-trat s-prev"></i>Uscite previste</span>
+          <span id="monthlyLegendPrevIn" style="display:none"><i class="leg-trat s-in"></i>Entrate previste</span>
+        </div>
+        <div class="chart-wrap h-lg"><canvas id="monthlyChart" aria-label="Entrate, uscite e differenza per mese, con i mesi previsti" role="img"></canvas></div>
+        <div class="scroll-x mt" id="overviewMonthlyTable"></div>
+        <p class="note" id="overviewMonthlyNote"></p>
+      </section>
+
+      <!-- Il conto nel tempo -->
+      <section class="sezione" id="patrimonioCard" aria-labelledby="patrimonioTitolo">
+        <div class="page-head">
+          <div>
+            <h2 class="section-title" id="patrimonioTitolo">Il conto nel tempo</h2>
+            <p class="page-sub" id="patrimonioSub"></p>
+          </div>
+          <div class="seg" id="patrimonioModeSeg" role="group" aria-label="Periodo del grafico">
+            <button type="button" class="seg-btn" data-mode="tutto" aria-pressed="true" onclick="setPatrimonioMode('tutto')">Tutti gli anni</button>
+            <button type="button" class="seg-btn" data-mode="anno" aria-pressed="false" onclick="setPatrimonioMode('anno')" id="patrimonioAnnoBtn">Solo quest'anno</button>
+          </div>
+        </div>
+        <div class="legenda mt" id="patrimonioLegend"></div>
+        <div class="chart-wrap h-sm"><canvas id="patrimonioChart" aria-label="Saldo del conto nel tempo, con la previsione tratteggiata" role="img"></canvas></div>
+      </section>
+    </div>
+
+    <!-- CATEGORIE -->
+    <div id="sec-categories" class="tabs-section">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title" id="catPagina">Categorie</h1>
+          <p class="page-sub" id="catPaginaSub"></p>
+        </div>
+      </header>
+      <div class="ov-fila">
+        <section class="chart-card col-larga" id="catOutBars" aria-labelledby="catOutTitolo"></section>
+        <div class="col-stretta">
+          <section class="chart-card" id="catInBars" aria-labelledby="catInTitolo"></section>
+          <section class="chart-card" id="detraibiliCard" aria-label="Spese detraibili"></section>
+        </div>
+      </div>
+      <section class="sezione" aria-labelledby="heatTitolo">
+        <h2 class="section-title" id="heatTitolo">Mese per mese, per categoria</h2>
+        <p class="page-sub sezione-sub" id="expenseHeatmapSub"></p>
+        <div class="hm-info" id="hmInfo" role="status" hidden></div>
+        <div class="scroll-x" id="expenseHeatmapEl"></div>
+      </section>
+      <section class="sezione" id="proiezioneCard" aria-labelledby="proiezioneTitolo"></section>
+    </div>
+
+    <!-- FLUSSO -->
+    <div id="sec-cashflow" class="tabs-section">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title" id="flowTitolo">Flusso di cassa</h1>
+          <p class="page-sub" id="flowSub"></p>
+        </div>
+        <div id="flowModeBar" style="display:none">
+          <div class="seg" id="flowModeSeg" role="group" aria-label="Quando contare le spese con carta">
+            <button type="button" class="seg-btn" data-mode="competenza" aria-pressed="true" onclick="setFlowMode('competenza')">Per competenza</button>
+            <button type="button" class="seg-btn" data-mode="cassa" aria-pressed="false" onclick="setFlowMode('cassa')">Per cassa</button>
+          </div>
+        </div>
+      </header>
+      <div class="ov-fila">
+        <section class="chart-card col-larga" aria-labelledby="flowGraficoTitolo">
+          <h2 class="section-title mb-6" id="flowGraficoTitolo">Entrate sopra, uscite sotto</h2>
+          <div class="legenda">
+            <span><i class="leg-box s-in"></i>Entrate</span>
+            <span><i class="leg-box s-out"></i><span id="flowLegendConto">Uscite dal conto</span></span>
+            <span id="flowLegendCard" style="display:none"><i class="leg-box s-card"></i>Carta</span>
+            <span><i class="leg-box leg-box-trat"></i>Previste</span>
+            <span><i class="leg-linea s-net"></i>Netto</span>
+            <span id="flowLegendSaldo" style="display:none"><i class="leg-trat s-prev"></i>Variazione reale del saldo</span>
+          </div>
+          <div class="chart-wrap h-flusso"><canvas id="flowChart" aria-label="Entrate e uscite per mese, con il netto mensile" role="img"></canvas></div>
+        </section>
+        <section class="chart-card col-stretta flusso-sintesi" id="flowSintesi" aria-label="In sintesi"></section>
+      </div>
+      <section class="sezione" aria-labelledby="flowTabTitolo">
+        <h2 class="section-title mb-6" id="flowTabTitolo">Mese per mese</h2>
+        <div class="scroll-x"><table class="cat-table flusso-table" id="flowTableEl"></table></div>
+        <p class="note" id="flowTableNote"></p>
+      </section>
+      <section class="sezione" aria-labelledby="flowCatTitolo">
+        <h2 class="section-title" id="flowCatTitolo">Una categoria nel tempo</h2>
+        <p class="page-sub sezione-sub">Scegli le categorie da confrontare (almeno una). La linea tratteggiata è la media mensile.</p>
+        <div class="chips" id="catSelectorEl" role="group" aria-label="Categorie da confrontare"></div>
+        <div class="piccoli-grafici" id="trendSmall"></div>
+      </section>
+    </div>
+
+    <!-- BOLLETTE -->
+    <div id="sec-bollette" class="tabs-section">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title" id="bollTitolo">Bollette</h1>
+          <p class="page-sub" id="bollSub"></p>
+        </div>
+      </header>
+      <div class="ov-fila">
+        <section class="chart-card col-larga" id="bolletteAttese" aria-label="Prossime bollette"></section>
+        <section class="chart-card boll-media" id="bolletteMedia" aria-label="Quanto costano al mese"></section>
+      </div>
+      <div class="ov-fila">
+        <section class="chart-card col-meta" aria-labelledby="bollAnnoTitolo">
+          <h2 class="section-title" id="bollAnnoTitolo">Spesa per anno</h2>
+          <div class="legenda legenda-sotto" id="bollAnnoLegenda"></div>
+          <div class="chart-wrap h-boll"><canvas id="bolletteAnnualeChart" aria-label="Spesa bollette per anno, gas e luce impilate" role="img"></canvas></div>
+        </section>
+        <section class="chart-card col-meta" aria-labelledby="bolletteYoyTitolo">
+          <div class="riga-titolo">
+            <h2 class="section-title" id="bolletteYoyTitolo">Anno su anno</h2>
+            <div class="seg" id="bolletteYoyPills" role="group" aria-label="Fornitura"></div>
+          </div>
+          <p class="page-sub" id="bolletteYoyNote"></p>
+          <div class="seg boll-dividi seg-sotto" role="group" aria-label="Bollette bimestrali" hidden>
+            <button type="button" class="seg-btn" data-mode="no" aria-pressed="true" onclick="setBollDividi(false)">Come fatturate</button>
+            <button type="button" class="seg-btn" data-mode="si" aria-pressed="false" onclick="setBollDividi(true)">Bimestrali per mese</button>
+          </div>
+          <div class="legenda legenda-sotto" id="bollYoyLegenda"></div>
+          <div class="chart-wrap h-boll-yoy"><canvas id="bolletteYoyChart" aria-label="Bollette mese per mese, confronto con l'anno prima" role="img"></canvas></div>
+        </section>
+      </div>
+      <div class="ov-fila">
+        <section class="chart-card col-meta" aria-labelledby="consumiGasTitolo">
+          <h2 class="section-title" id="consumiGasTitolo">Gas: consumi e spesa</h2>
+          <p class="section-sub">Metri cubi consumati e spesa per competenza</p>
+          <div class="legenda legenda-sotto" id="consumiGasLegenda"></div>
+          <div class="chart-wrap h-consumi"><canvas id="consumiGasChart" aria-label="Consumi e spesa del gas per mese" role="img"></canvas></div>
+          <p class="note" id="consumiGasNota"></p>
+        </section>
+        <section class="chart-card col-meta" aria-labelledby="consumiLuceTitolo">
+          <h2 class="section-title" id="consumiLuceTitolo">Luce: consumi e spesa</h2>
+          <p class="section-sub">kWh totali F1+F2+F3 e spesa per competenza</p>
+          <div class="legenda legenda-sotto" id="consumiLuceLegenda"></div>
+          <div class="chart-wrap h-consumi"><canvas id="consumiLuceChart" aria-label="Consumi e spesa della luce per mese" role="img"></canvas></div>
+          <p class="note" id="consumiLuceNota"></p>
+        </section>
+      </div>
+      <section class="sezione" aria-labelledby="bolletteTableTitolo">
+        <div class="riga-titolo">
+          <div>
+            <h2 class="section-title" id="bolletteTableTitolo">Elenco bollette</h2>
+            <p class="section-sub" id="bolletteTableSub"></p>
+          </div>
+          <div class="seg boll-dividi" role="group" aria-label="Bollette bimestrali" hidden>
+            <button type="button" class="seg-btn" data-mode="no" aria-pressed="true" onclick="setBollDividi(false)">Come fatturate</button>
+            <button type="button" class="seg-btn" data-mode="si" aria-pressed="false" onclick="setBollDividi(true)">Bimestrali per mese</button>
+          </div>
+        </div>
+        <div class="scroll-x mt"><table class="cat-table boll-table" id="bolletteTableEl"></table></div>
+      </section>
+    </div>
+
+    <!-- ANNI -->
+    <div id="sec-compare" class="tabs-section">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">Anni a confronto</h1>
+          <p class="page-sub" id="compareSub"></p>
+        </div>
+      </header>
+      <div class="ov-fila">
+        <section class="chart-card col-larga" aria-labelledby="compareTabTitolo">
+          <h2 class="section-title mb-8" id="compareTabTitolo">Riepilogo per anno</h2>
+          <div class="scroll-x"><table class="cat-table anni-table" id="compareTableEl"></table></div>
+          <p class="note" id="compareNota"></p>
+        </section>
+        <section class="chart-card anni-barre" aria-labelledby="compareBarreTitolo">
+          <h2 class="section-title mb-8" id="compareBarreTitolo">Entrate e uscite</h2>
+          <div id="compareBars"></div>
+          <p class="note" id="compareBarsNota"></p>
+        </section>
+      </div>
+      <section class="chart-card" aria-labelledby="compareMeseTitolo">
+        <div class="riga-titolo">
+          <h2 class="section-title" id="compareMeseTitolo">Entrate e uscite mese per mese</h2>
+          <div class="seg" id="compareModeSeg" role="group" aria-label="Vista">
+            <button type="button" class="seg-btn" data-mode="timeline" aria-pressed="true" onclick="setCompareMode('timeline')">Nel tempo</button>
+            <button type="button" class="seg-btn" data-mode="monthly" aria-pressed="false" onclick="setCompareMode('monthly')">Per mese</button>
+          </div>
+        </div>
+        <div id="compareTempo">
+          <div class="legenda legenda-sotto">
+            <span><i class="leg-linea s-in"></i>Entrate</span>
+            <span><i class="leg-linea s-out"></i>Uscite</span>
+          </div>
+          <div class="chart-wrap h-anni"><canvas id="compareTimelineChart" aria-label="Entrate e uscite mensili su tutti gli anni" role="img"></canvas></div>
+          <p class="note" id="comparePicchi"></p>
+        </div>
+        <div id="compareMese" hidden>
+          <p class="page-sub compare-spiega">Ogni linea è un anno: così si vede se un mese è caro ogni anno o solo una volta.</p>
+          <div class="legenda legenda-sotto" id="compareAnniLegenda"></div>
+          <div class="due-grafici">
+            <div>
+              <h3 class="blocco-titolo">Entrate</h3>
+              <div class="chart-wrap h-sm"><canvas id="compareMonthlyIncChart" aria-label="Entrate per mese, una linea per anno" role="img"></canvas></div>
+            </div>
+            <div>
+              <h3 class="blocco-titolo">Uscite</h3>
+              <div class="chart-wrap h-sm"><canvas id="compareMonthlyOutChart" aria-label="Uscite per mese, una linea per anno" role="img"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="ov-fila">
+        <section class="chart-card col-meta" id="compareSaldoChartWrap" aria-labelledby="compareSaldoTitolo">
+          <h2 class="section-title" id="compareSaldoTitolo">Saldo del conto</h2>
+          <p class="section-sub" id="compareSaldoSub"></p>
+          <div class="chart-wrap h-sm mt-6"><canvas id="compareSaldoChart" aria-label="Saldo del conto nel tempo, con il saldo atteso tratteggiato" role="img"></canvas></div>
+        </section>
+        <section class="chart-card col-meta" aria-labelledby="seasonalityTitolo">
+          <h2 class="section-title" id="seasonalityTitolo">Quando si spende di più</h2>
+          <p class="section-sub" id="seasonalitySub"></p>
+          <div class="chart-wrap h-sm mt-6"><canvas id="seasonalityChart" aria-label="Uscita tipica (mediana) di ogni mese su tutti gli anni, con i punti dell'anno selezionato" role="img"></canvas></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- PERIODO (js/periodo.js): date libere, indipendenti dall'anno selezionato -->
+    <div id="sec-periodo" class="tabs-section">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">Un periodo a scelta</h1>
+          <p class="page-sub" id="periodoSub"></p>
+        </div>
+        <div class="periodo-dates">
+          <label for="periodoDal">Dal</label>
+          <input type="date" id="periodoDal" class="filter-input" onchange="onPeriodoDateChange()">
+          <label for="periodoAl">al</label>
+          <input type="date" id="periodoAl" class="filter-input" onchange="onPeriodoDateChange()">
+        </div>
+      </header>
+      <div class="chips periodo-chips" id="periodoPresetSeg" role="group" aria-label="Periodi rapidi"></div>
+      <div class="ov-fila">
+        <section class="chart-card col-larga" id="periodoKpi" aria-label="Totali del periodo" aria-live="polite"></section>
+        <section class="chart-card periodo-medie" id="periodoMedie" aria-label="Medie del periodo"></section>
+      </div>
+      <section class="chart-card" aria-labelledby="periodoChartTitolo">
+        <h2 class="section-title" id="periodoChartTitolo">Mese per mese</h2>
+        <p class="section-sub" id="periodoChartSub"></p>
+        <div class="legenda legenda-sotto">
+          <span><i class="leg-box s-in"></i>Entrate</span>
+          <span><i class="leg-box s-out"></i>Uscite</span>
+          <span><i class="leg-linea s-net"></i><span id="periodoLegSaldo">Saldo</span></span>
+        </div>
+        <div class="chart-wrap h-lg"><canvas id="periodoChart" aria-label="Entrate, uscite e saldo nel periodo" role="img"></canvas></div>
+      </section>
+      <div class="ov-fila">
+        <section class="chart-card col-larga" id="periodoCatOut" aria-label="Uscite per categoria"></section>
+        <div class="col-stretta">
+          <section class="chart-card" id="periodoCatIn" aria-label="Entrate per categoria"></section>
+          <section class="chart-card" id="periodoTop" aria-label="Le uscite più grandi"></section>
+        </div>
+      </div>
+    </div>
+
+    <!-- DATI -->
+    <div id="sec-dati" class="tabs-section">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title" id="datiTitolo">Movimenti</h1>
+          <p class="page-sub" id="datiPaginaSub"></p>
+        </div>
+        <div id="controlliBadge"></div>
+      </header>
+      <section class="chart-card" id="controlliCard" aria-label="Controllo dati" hidden></section>
+      <section class="chart-card" id="daClassificare" aria-label="Da classificare" hidden></section>
+      <section class="chart-card dati-filtri" aria-label="Filtri">
+        <div class="campo campo-largo">
+          <label for="datiSearch">Cerca movimento</label>
+          <input type="search" id="datiSearch" placeholder="Descrizione, categoria o data" class="filter-input" oninput="onDatiSearchInput()">
+        </div>
+        <div class="campo">
+          <label for="datiTipoFilter">Tipo</label>
+          <select id="datiTipoFilter" class="filter-input" onchange="renderDati()">
+            <option value="">Entrate e uscite</option>
+            <option value="in">Solo entrate</option>
+            <option value="out">Solo uscite</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="datiMetodoFilter">Pagamento</label>
+          <select id="datiMetodoFilter" class="filter-input" onchange="renderDati()">
+            <option value="">Carta e conto</option>
+            <option value="card">Solo carta</option>
+            <option value="conto">Solo conto</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="datiCatFilter">Categoria</label>
+          <select id="datiCatFilter" class="filter-input" onchange="renderDati()">
+            <option value="">Tutte</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="datiMeseFilter">Mese</label>
+          <select id="datiMeseFilter" class="filter-input" onchange="renderDati()">
+            <option value="">Tutti i mesi</option>
+            <option value="0">Gennaio</option><option value="1">Febbraio</option><option value="2">Marzo</option>
+            <option value="3">Aprile</option><option value="4">Maggio</option><option value="5">Giugno</option>
+            <option value="6">Luglio</option><option value="7">Agosto</option><option value="8">Settembre</option>
+            <option value="9">Ottobre</option><option value="10">Novembre</option><option value="11">Dicembre</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="datiSortBy">Ordina</label>
+          <select id="datiSortBy" class="filter-input" onchange="renderDati()">
+            <option value="date-desc">Più recenti prima</option>
+            <option value="date-asc">Più vecchi prima</option>
+            <option value="amount-desc">Importo più alto</option>
+            <option value="amount-asc">Importo più basso</option>
+          </select>
+        </div>
+        <button type="button" class="btn-sm" id="resetDatiFiltersBtn" onclick="resetDatiFilters()">Azzera filtri</button>
+      </section>
+      <p class="dati-count" id="datiCount" aria-live="polite"></p>
+      <p class="dati-esito" id="datiEsito" role="status"></p>
+      <div class="scroll-x">
+        <table class="cat-table dati-table" id="datiTableEl"></table>
+      </div>
+      <div class="pager" id="datiPager"></div>
+    </div>
+
+  </main>
+
+  <!-- POPUP DETTAGLIO MESE -->
+  <div class="modal-overlay" id="meseModal" hidden>
+    <div class="modal-card mese-card" role="dialog" aria-modal="true" aria-labelledby="meseTitle">
+      <div class="modal-head">
+        <div class="modal-title">
+          <h2 class="chart-title" id="meseTitle">Dettaglio mese</h2>
+          <p class="page-sub" id="meseSub"></p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-sm modal-nav" id="mesePrevBtn" onclick="stepMese(-1)" aria-label="Mese precedente">‹</button>
+          <button type="button" class="btn-sm modal-nav" id="meseNextBtn" onclick="stepMese(1)" aria-label="Mese successivo">›</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="mese-kpis" id="meseKpi"></div>
+        <div id="meseCats"></div>
+        <div id="meseTop"></div>
+        <div class="modal-foot">
+          <button type="button" class="btn-sm" id="meseMovimenti">Vedi i movimenti</button>
+          <button type="button" class="btn-sm btn-close" id="meseChiudi" onclick="closeMeseModal()">Chiudi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- POPUP SOTTOCATEGORIE DI UNA CATEGORIA (js/categorie.js) -->
+  <div class="modal-overlay" id="catModal" hidden>
+    <div class="modal-card cat-card" role="dialog" aria-modal="true" aria-labelledby="catTitle">
+      <div class="modal-head">
+        <div class="modal-title">
+          <h2 class="chart-title" id="catTitle">Categoria</h2>
+          <p class="page-sub" id="catSub"></p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-sm modal-nav" id="catPrevBtn" onclick="stepCategoria(-1)" aria-label="Categoria precedente">‹</button>
+          <button type="button" class="btn-sm modal-nav" id="catNextBtn" onclick="stepCategoria(1)" aria-label="Categoria successiva">›</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div id="catBody"></div>
+        <div class="modal-foot">
+          <button type="button" class="btn-sm" onclick="openDatiForCategoria()">Vedi i movimenti</button>
+          <button type="button" class="btn-sm btn-close" id="catChiudi" onclick="chiudiCategoria()">Chiudi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- POPUP IMPORTA MOVIMENTI (js/importa.js) -->
+  <div class="modal-overlay" id="importModal" hidden>
+    <div class="modal-card imp-card" role="dialog" aria-modal="true" aria-labelledby="impTitle">
+      <div class="modal-head">
+        <div class="modal-title">
+          <div class="chart-title" id="impTitle">Importa movimenti</div>
+          <div class="chart-sub" id="impSub"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-sm" id="impChiudi" onclick="chiudiImport()">Chiudi</button>
+        </div>
+      </div>
+      <div class="modal-body" id="impBody"></div>
+    </div>
+  </div>
+
+  <!-- POPUP MODIFICA (js/modifica.js): categoria, Ricorrenti, Previste -->
+  <div class="modal-overlay" id="editModal" hidden>
+    <div class="modal-card ed-card" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+      <div class="modal-head">
+        <div class="modal-title">
+          <div class="chart-title" id="edTitle"></div>
+          <div class="chart-sub" id="edSub"></div>
+        </div>
+      </div>
+      <div class="modal-body" id="edBody"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV (solo mobile) -->
+  <nav id="bottomNav" aria-label="Navigazione mobile">
+    <button class="bnav-btn active" data-section="overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="bnav-btn" data-section="categories">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+      <span>Categorie</span>
+    </button>
+    <button class="bnav-btn" data-section="cashflow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      <span>Flusso</span>
+    </button>
+    <button class="bnav-btn" data-section="bollette">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+      <span>Bollette</span>
+    </button>
+    <button class="bnav-btn" data-section="compare">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="13"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="9"/></svg>
+      <span>Anni</span>
+    </button>
+    <button class="bnav-btn" data-section="periodo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span>Periodo</span>
+    </button>
+    <button class="bnav-btn" data-section="dati">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      <span>Dati</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- Elenco dei campi ricercabili della tabella Dati (js/dati.js) -->
+<ul class="combo-lista" id="comboLista" role="listbox" aria-label="Voci disponibili" hidden></ul>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay" role="status" aria-live="polite" style="display:none">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Caricamento dati in corso...</div>
+</div>
+
+<!-- Script classici (non moduli): condividono lo scope globale, usato dagli handler onclick. L'ordine conta: main.js per ultimo. -->
+<script defer src="js/state.js"></script>
+<script defer src="js/calcoli.js"></script>
+<script defer src="js/helpers.js"></script>
+<script defer src="js/overview.js"></script>
+<script defer src="js/categorie.js"></script>
+<script defer src="js/andamento.js"></script>
+<script defer src="js/bollette.js"></script>
+<script defer src="js/anni.js"></script>
+<script defer src="js/periodo.js"></script>
+<script defer src="js/dati.js"></script>
+<script defer src="js/controlli.js"></script>
+<script defer src="js/detraibili.js"></script>
+<script defer src="js/importa.js"></script>
+<script defer src="js/modifica.js"></script>
+<script defer src="js/main.js"></script>
+</body>
+</html>

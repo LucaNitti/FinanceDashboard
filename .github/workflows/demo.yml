@@ -1,0 +1,42 @@
+# Demo pubblica su GitHub Pages con dati inventati (tools/crea-demo.js): nessun dato reale,
+# nessun segreto. I dati finti arrivano fino a oggi, quindi la demo viene rigenerata ogni notte.
+# Una volta sola, nel repository: Settings → Pages → Source: "GitHub Actions".
+name: Demo su GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '15 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      TZ: Europe/Rome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test
+      - run: node tools/crea-demo.js _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

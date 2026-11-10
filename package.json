@@ -1,0 +1,13 @@
+{
+  "name": "finflow-demo",
+  "version": "1.1.0",
+  "description": "FinFlow — portale finanziario di famiglia, demo con dati inventati",
+  "scripts": {
+    "demo": "node tools/crea-demo.js _site --serve 3100",
+    "build": "node tools/crea-demo.js _site",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
